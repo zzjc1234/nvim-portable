@@ -14,18 +14,31 @@ That is especially useful when:
 
 Instead of cloning a config repo and letting the target machine bootstrap itself online, this project builds a portable bundle ahead of time and verifies that it can start from its own internal paths.
 
+## Current scope
+
+This provider currently supports consumers that use `lazy.nvim` as their plugin manager. The shared scripts and default checks assume a `lazy.nvim`-managed bundle layout.
+
 ## What this repo provides
 
 - A reusable `workflow_call` GitHub Actions workflow
-- Generic Docker build/test images
 - Generic scripts to build, smoke-test, package, and verify portable Neovim bundles
+
+## Provider vs consumer responsibilities
+
+| Layer | Repository | Responsibility |
+|-------|------------|----------------|
+| Provider | `nvim-portable` | Build orchestration, bundle layout, XDG isolation, artifact packaging, fresh-container verification, shared contract enforcement |
+| Consumer | your config repo | The actual Neovim config, lazy.nvim bootstrap, repo-specific checks, and declaring what must exist in the final bundle |
+
+The provider answers **how to build and verify a portable bundle**.
+The consumer answers **what should be inside this specific bundle**.
 
 ## Consumer repo contract
 
 A consumer repo needs to provide:
 
 1. A Neovim config directory containing `init.lua`
-2. A bootstrap script that installs repo-specific plugins, Treesitter parsers, and any other runtime assets into the bundle
+2. A bootstrap script that installs `lazy.nvim`, repo-specific plugins, and any other runtime assets into the bundle
 3. Optionally, workflow inputs that declare repo-specific bundle paths and Treesitter parsers
 4. Optionally, smoke and verify scripts with extra assertions
 
@@ -35,6 +48,7 @@ The reusable workflow handles:
 - artifact upload/download
 - bundle packaging
 - fresh-container verification
+- default lazy.nvim baseline checks
 
 The consumer repo handles:
 
@@ -42,6 +56,7 @@ The consumer repo handles:
 - plugin manager bootstrapping
 - parser/tool selection
 - repo-specific smoke checks
+- repo-specific verify checks
 
 ## Example consumer workflow
 
@@ -125,6 +140,8 @@ The reusable build script exports these variables before calling the consumer bo
 - `XDG_CACHE_HOME`
 - `NVIM_APPNAME`
 
+These variables are for **consumer hook authors**, not for end users of the final artifact. End users only need to run the bundle's generated `run.sh`.
+
 The bootstrap script can call:
 
 ```bash
@@ -141,11 +158,16 @@ or any equivalent repo-specific setup command.
 
 This split lets each consumer repo keep its own plugin/parser/provider assertions without hardcoding them into shared infrastructure.
 
+## Runtime dependency note
+
+The shared verify container intentionally keeps its package list minimal. If a consumer config performs runtime checks that require extra system tools (for example a compiler toolchain), the consumer should opt in through `test_apt_packages`.
+
 ## Fixed assumptions that remain
 
 Some assumptions are still fixed on purpose because they are part of the product contract rather than caller-specific customization:
 
 - supported targets are still `amd64` and `arm64`
+- consumers are expected to use `lazy.nvim`
 - the bundle archive still contains a top-level `nvim-bundle` directory by default unless `bundle_name` is changed
 - the bundle still uses the internal XDG layout plus `run.sh`
 - the Neovim download still assumes the official release naming pattern `nvim-linux-<arch>.tar.gz`
@@ -158,4 +180,11 @@ These stay fixed because the rest of the scripts and verification flow depend on
 
 ## Refs and versioning
 
-Use semver tags from this repo in consumer workflows, for example `@v1`.
+Use semver tags from this repo in consumer workflows, for example `@v1`. The recommended caller pattern is:
+
+```yaml
+uses: zzjc1234/nvim-portable/.github/workflows/neovim-bundle.yml@v1
+with:
+  infra_repository: zzjc1234/nvim-portable
+  infra_ref: v1
+```

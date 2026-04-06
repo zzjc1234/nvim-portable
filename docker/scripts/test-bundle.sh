@@ -9,7 +9,7 @@ SOURCE_ROOT=${SOURCE_ROOT:-}
 OUTPUT_DIR=${OUTPUT_DIR:-.nvim-portable/out}
 BUNDLE_NAME=${BUNDLE_NAME:-nvim-bundle}
 TEST_CONTAINER_IMAGE=${TEST_CONTAINER_IMAGE:-ubuntu:24.04}
-TEST_APT_PACKAGES=${TEST_APT_PACKAGES:-bash build-essential ca-certificates file python3 xz-utils}
+TEST_APT_PACKAGES=${TEST_APT_PACKAGES:-bash ca-certificates file python3 xz-utils}
 TEST_INSTALL_ROOT=${TEST_INSTALL_ROOT:-/opt/nvim-bundle-test}
 KEEP_TEST_CONTAINER=${KEEP_TEST_CONTAINER:-0}
 VERIFY_SCRIPT=${VERIFY_SCRIPT:-}
@@ -63,7 +63,7 @@ if [[ -n "$VERIFY_SCRIPT" ]]; then
   docker exec "$CONTAINER_NAME" chmod +x /tmp/consumer-verify.sh
 fi
 
-docker exec -e TEST_INSTALL_ROOT="$TEST_INSTALL_ROOT" "$CONTAINER_NAME" bash -lc 'BUNDLE_ROOT="$TEST_INSTALL_ROOT"; BUNDLE_RUN="$BUNDLE_ROOT/run.sh"; if [[ ! -x "$BUNDLE_RUN" ]]; then echo "bundle missing in container" >&2; exit 1; fi; BUNDLE_EXPECTED_ROOT="$BUNDLE_ROOT" "$BUNDLE_RUN" --headless "+lua local root = vim.env.BUNDLE_EXPECTED_ROOT; assert(vim.startswith(vim.fn.stdpath(\"config\"), root .. \"/xdg/config\")); assert(vim.startswith(vim.fn.stdpath(\"data\"), root .. \"/xdg/data\")); assert(vim.startswith(vim.fn.stdpath(\"state\"), root .. \"/xdg/state\")); assert(vim.startswith(vim.fn.stdpath(\"cache\"), root .. \"/xdg/cache\")); print(\"stdpath_ok=true\")" "+lua print(\"startup_ok=true\")" +qa'
+docker exec -e TEST_INSTALL_ROOT="$TEST_INSTALL_ROOT" "$CONTAINER_NAME" bash -lc 'BUNDLE_ROOT="$TEST_INSTALL_ROOT"; BUNDLE_RUN="$BUNDLE_ROOT/run.sh"; if [[ ! -x "$BUNDLE_RUN" ]]; then echo "bundle missing in container" >&2; exit 1; fi; BUNDLE_EXPECTED_ROOT="$BUNDLE_ROOT" "$BUNDLE_RUN" --headless "+lua local root = vim.env.BUNDLE_EXPECTED_ROOT; assert(vim.startswith(vim.fn.stdpath(\"config\"), root .. \"/xdg/config\")); assert(vim.startswith(vim.fn.stdpath(\"data\"), root .. \"/xdg/data\")); assert(vim.startswith(vim.fn.stdpath(\"state\"), root .. \"/xdg/state\")); assert(vim.startswith(vim.fn.stdpath(\"cache\"), root .. \"/xdg/cache\")); print(\"stdpath_ok=true\")" "+lua assert(vim.fn.exists(\":Lazy\") == 2, \"Lazy command missing\"); print(\"lazy_cmd=true\")" "+lua local ok,lazy=pcall(require,\"lazy\"); assert(ok and lazy, \"lazy missing\"); print(\"lazy_count=\" .. lazy.stats().count)" "+lua print(\"startup_ok=true\")" +qa'
 
 if [[ -n "$VERIFY_SCRIPT" ]]; then
   docker exec -e TEST_INSTALL_ROOT="$TEST_INSTALL_ROOT" "$CONTAINER_NAME" bash -lc 'export BUNDLE_ROOT="$TEST_INSTALL_ROOT"; export BUNDLE_RUN="$BUNDLE_ROOT/run.sh"; bash /tmp/consumer-verify.sh'

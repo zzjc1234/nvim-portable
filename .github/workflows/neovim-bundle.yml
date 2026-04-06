@@ -68,7 +68,7 @@ on:
       test_apt_packages:
         required: false
         type: string
-        default: bash build-essential ca-certificates file python3 xz-utils
+        default: bash ca-certificates file python3 xz-utils
       output_dir:
         required: false
         type: string

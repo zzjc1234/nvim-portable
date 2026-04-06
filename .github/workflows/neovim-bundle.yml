@@ -6,6 +6,14 @@ on:
       config_path:
         required: true
         type: string
+      infra_repository:
+        required: false
+        type: string
+        default: zzjc1234/nvim-portable
+      infra_ref:
+        required: false
+        type: string
+        default: main
       bootstrap_script:
         required: true
         type: string
@@ -132,19 +140,11 @@ jobs:
         with:
           path: consumer
 
-      - name: Resolve workflow repository
-        id: workflow_repo
-        shell: bash
-        run: |
-          ref='${{ github.workflow_ref }}'
-          printf 'repository=%s\n' "${ref%%/.github/workflows/*}" >> "$GITHUB_OUTPUT"
-          printf 'ref=%s\n' "${ref#*@}" >> "$GITHUB_OUTPUT"
-
       - name: Checkout nvim-portable repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.workflow_repo.outputs.repository }}
-          ref: ${{ steps.workflow_repo.outputs.ref }}
+          repository: ${{ inputs.infra_repository }}
+          ref: ${{ inputs.infra_ref }}
           path: infra
 
       - name: Build bundle
@@ -200,19 +200,11 @@ jobs:
         with:
           path: consumer
 
-      - name: Resolve workflow repository
-        id: workflow_repo
-        shell: bash
-        run: |
-          ref='${{ github.workflow_ref }}'
-          printf 'repository=%s\n' "${ref%%/.github/workflows/*}" >> "$GITHUB_OUTPUT"
-          printf 'ref=%s\n' "${ref#*@}" >> "$GITHUB_OUTPUT"
-
       - name: Checkout nvim-portable repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.workflow_repo.outputs.repository }}
-          ref: ${{ steps.workflow_repo.outputs.ref }}
+          repository: ${{ inputs.infra_repository }}
+          ref: ${{ inputs.infra_ref }}
           path: infra
 
       - name: Download package artifact

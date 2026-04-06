@@ -1,0 +1,236 @@
+name: neovim-bundle
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        required: true
+        type: string
+      bootstrap_script:
+        required: true
+        type: string
+      required_bundle_paths:
+        required: false
+        type: string
+        default: ""
+      required_treesitter_parsers:
+        required: false
+        type: string
+        default: ""
+      smoke_script:
+        required: false
+        type: string
+        default: ""
+      verify_script:
+        required: false
+        type: string
+        default: ""
+      bundle_name:
+        required: false
+        type: string
+        default: nvim-bundle
+      app_name:
+        required: false
+        type: string
+        default: nvim
+      neovim_version:
+        required: false
+        type: string
+        default: v0.11.7
+      target_arches:
+        required: false
+        type: string
+        default: amd64,arm64
+      extra_apt_packages:
+        required: false
+        type: string
+        default: ""
+      build_container_image:
+        required: false
+        type: string
+        default: ubuntu:24.04
+      test_container_image:
+        required: false
+        type: string
+        default: ubuntu:24.04
+      build_apt_packages:
+        required: false
+        type: string
+        default: bash build-essential ca-certificates curl fd-find file git python3 ripgrep unzip xz-utils
+      test_apt_packages:
+        required: false
+        type: string
+        default: bash ca-certificates file python3 xz-utils
+      output_dir:
+        required: false
+        type: string
+        default: .nvim-portable/out
+      test_install_root:
+        required: false
+        type: string
+        default: /opt/nvim-bundle-test
+      amd64_runner:
+        required: false
+        type: string
+        default: ubuntu-24.04
+      arm64_runner:
+        required: false
+        type: string
+        default: ubuntu-24.04-arm
+
+jobs:
+  prepare:
+    name: prepare-matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Compute target matrix
+        id: matrix
+        shell: bash
+        env:
+          TARGET_ARCHES: ${{ inputs.target_arches }}
+          AMD64_RUNNER: ${{ inputs.amd64_runner }}
+          ARM64_RUNNER: ${{ inputs.arm64_runner }}
+          BUNDLE_NAME: ${{ inputs.bundle_name }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+
+          arches = [item.strip() for item in os.environ["TARGET_ARCHES"].split(",") if item.strip()]
+          bundle_name = os.environ["BUNDLE_NAME"]
+          mapping = {
+              "amd64": {
+                  "id": "linux-x64",
+                  "runner": os.environ["AMD64_RUNNER"],
+                  "target_arch": "amd64",
+                  "artifact_file": f"{bundle_name}-linux-x86_64.tar.gz",
+              },
+              "arm64": {
+                  "id": "linux-arm64",
+                  "runner": os.environ["ARM64_RUNNER"],
+                  "target_arch": "arm64",
+                  "artifact_file": f"{bundle_name}-linux-arm64.tar.gz",
+              },
+          }
+
+          include = [mapping[arch] for arch in arches]
+          print(f"matrix={json.dumps({'include': include})}")
+          PY
+
+  build:
+    needs: prepare
+    name: build-${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+
+    steps:
+      - name: Checkout consumer repository
+        uses: actions/checkout@v4
+        with:
+          path: consumer
+
+      - name: Resolve workflow repository
+        id: workflow_repo
+        shell: bash
+        run: |
+          ref='${{ github.workflow_ref }}'
+          printf 'repository=%s\n' "${ref%%/.github/workflows/*}" >> "$GITHUB_OUTPUT"
+          printf 'ref=%s\n' "${ref#*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout nvim-portable repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.workflow_repo.outputs.repository }}
+          ref: ${{ steps.workflow_repo.outputs.ref }}
+          path: infra
+
+      - name: Build bundle
+        env:
+          TARGET_ARCH: ${{ matrix.target_arch }}
+          SOURCE_ROOT: ${{ github.workspace }}/consumer
+          CONFIG_PATH: ${{ inputs.config_path }}
+          BOOTSTRAP_SCRIPT: ${{ inputs.bootstrap_script }}
+          OUTPUT_DIR: ${{ inputs.output_dir }}
+          BUNDLE_NAME: ${{ inputs.bundle_name }}
+          APP_NAME: ${{ inputs.app_name }}
+          NVIM_VERSION: ${{ inputs.neovim_version }}
+          REQUIRED_BUNDLE_PATHS: ${{ inputs.required_bundle_paths }}
+          REQUIRED_TREESITTER_PARSERS: ${{ inputs.required_treesitter_parsers }}
+          BUILD_CONTAINER_IMAGE: ${{ inputs.build_container_image }}
+          BUILD_APT_PACKAGES: ${{ inputs.build_apt_packages }} ${{ inputs.extra_apt_packages }}
+        run: bash infra/docker/scripts/build-bundle.sh
+
+      - name: Smoke test built bundle
+        env:
+          SMOKE_SCRIPT: ${{ inputs.smoke_script != '' && format('{0}/consumer/{1}', github.workspace, inputs.smoke_script) || '' }}
+        run: bash infra/docker/scripts/smoke-bundle.sh "$GITHUB_WORKSPACE/consumer/${{ inputs.output_dir }}/${{ inputs.bundle_name }}"
+
+      - name: Package bundle
+        env:
+          TARGET_ARCH: ${{ matrix.target_arch }}
+          SOURCE_ROOT: ${{ github.workspace }}/consumer
+          OUTPUT_DIR: ${{ inputs.output_dir }}
+          BUNDLE_NAME: ${{ inputs.bundle_name }}
+          ARTIFACT_FILE: ${{ matrix.artifact_file }}
+        run: bash infra/docker/scripts/package-bundle.sh
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_file }}
+          path: ${{ github.workspace }}/consumer/${{ inputs.output_dir }}/${{ matrix.artifact_file }}
+          if-no-files-found: error
+
+  verify:
+    needs:
+      - prepare
+      - build
+    name: verify-${{ matrix.id }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+
+    steps:
+      - name: Checkout consumer repository
+        uses: actions/checkout@v4
+        with:
+          path: consumer
+
+      - name: Resolve workflow repository
+        id: workflow_repo
+        shell: bash
+        run: |
+          ref='${{ github.workflow_ref }}'
+          printf 'repository=%s\n' "${ref%%/.github/workflows/*}" >> "$GITHUB_OUTPUT"
+          printf 'ref=%s\n' "${ref#*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout nvim-portable repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.workflow_repo.outputs.repository }}
+          ref: ${{ steps.workflow_repo.outputs.ref }}
+          path: infra
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact_file }}
+          path: ${{ runner.temp }}/bundle
+
+      - name: Verify artifact in fresh container
+        env:
+          TARGET_ARCH: ${{ matrix.target_arch }}
+          SOURCE_ROOT: ${{ github.workspace }}/consumer
+          OUTPUT_DIR: ${{ inputs.output_dir }}
+          BUNDLE_NAME: ${{ inputs.bundle_name }}
+          TEST_CONTAINER_IMAGE: ${{ inputs.test_container_image }}
+          TEST_APT_PACKAGES: ${{ inputs.test_apt_packages }} ${{ inputs.extra_apt_packages }}
+          TEST_INSTALL_ROOT: ${{ inputs.test_install_root }}
+          ARTIFACT_FILE: ${{ matrix.artifact_file }}
+          ARTIFACT_PATH: ${{ runner.temp }}/bundle/${{ matrix.artifact_file }}
+          VERIFY_SCRIPT: ${{ inputs.verify_script != '' && format('{0}/consumer/{1}', github.workspace, inputs.verify_script) || '' }}
+        run: bash infra/docker/scripts/test-bundle.sh

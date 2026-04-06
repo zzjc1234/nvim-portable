@@ -31,6 +31,14 @@ cleanup() {
 
 trap cleanup EXIT
 
+stage_bundle_snapshot() {
+  if cp -a "$BUNDLE_ROOT" "$STAGE_DIR/" 2>/dev/null; then
+    return
+  fi
+
+  cp -R "$BUNDLE_ROOT" "$STAGE_DIR/"
+}
+
 if [[ ! -x "$BUNDLE_ROOT/run.sh" ]]; then
   printf 'bundle not found at %s\n' "$BUNDLE_ROOT" >&2
   exit 1
@@ -38,8 +46,7 @@ fi
 
 mkdir -p "$(dirname "$ARTIFACT_PATH")"
 rm -f "$TMP_ARTIFACT"
-# Archive from a staged snapshot so tar does not race against mutations in the live bundle tree.
-tar -C "$SOURCE_ROOT/$OUTPUT_DIR" -cf - "$BUNDLE_NAME" | tar -C "$STAGE_DIR" -xf -
+stage_bundle_snapshot
 # COPYFILE_DISABLE keeps macOS metadata out of Linux bundle archives when callers package locally.
 COPYFILE_DISABLE=1 tar -C "$STAGE_DIR" -czf "$TMP_ARTIFACT" "$BUNDLE_NAME"
 mv "$TMP_ARTIFACT" "$ARTIFACT_PATH"

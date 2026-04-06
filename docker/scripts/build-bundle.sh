@@ -147,13 +147,20 @@ bundle_path_present() {
   [[ -e "$BUNDLE_ROOT/$relative_path" ]]
 }
 
-parser_present() {
+managed_parser_present() {
   local parser=$1
 
   [[ -f "$XDG_DATA_HOME/$APP_NAME/lazy/nvim-treesitter/parser/$parser.so" \
-      || -f "$XDG_DATA_HOME/$APP_NAME/site/parser/$parser.so" \
-      || -f "$BUNDLE_ROOT/nvim/lib/nvim/parser/$parser.so" ]]
+      || -f "$XDG_DATA_HOME/$APP_NAME/site/parser/$parser.so" ]]
 }
+
+for parser in "${REQUIRED_TREESITTER_PARSER_ITEMS[@]}"; do
+  if managed_parser_present "$parser"; then
+    continue
+  fi
+
+  "$BUNDLE_RUN" --headless "+TSInstallSync! $parser" +qa
+done
 
 declare -a MISSING_BUNDLE_PATHS=()
 for relative_path in "${REQUIRED_BUNDLE_PATH_ITEMS[@]}"; do
@@ -169,7 +176,7 @@ fi
 
 declare -a MISSING_PARSERS=()
 for parser in "${REQUIRED_TREESITTER_PARSER_ITEMS[@]}"; do
-  if ! parser_present "$parser"; then
+  if ! managed_parser_present "$parser"; then
     MISSING_PARSERS+=("$parser")
   fi
 done

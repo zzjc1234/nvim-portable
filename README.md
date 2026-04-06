@@ -188,3 +188,5 @@ with:
   infra_repository: zzjc1234/nvim-portable
   infra_ref: v1
 ```
+
+If you want to test unreleased provider changes, point both the reusable workflow ref and `infra_ref` to `main` explicitly.

@@ -120,6 +120,11 @@ if [[ -n "$BOOTSTRAP_SOURCE" ]]; then
   bash "$BOOTSTRAP_SOURCE"
 fi
 
+if [[ ! -d "$XDG_DATA_HOME/$APP_NAME/lazy/lazy.nvim" ]]; then
+  printf 'lazy.nvim not found under %s\n' "$XDG_DATA_HOME/$APP_NAME/lazy/lazy.nvim" >&2
+  exit 1
+fi
+
 declare -a REQUIRED_BUNDLE_PATH_ITEMS=()
 declare -a REQUIRED_TREESITTER_PARSER_ITEMS=()
 

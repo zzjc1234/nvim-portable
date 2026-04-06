@@ -23,6 +23,13 @@ fi
 BUNDLE_ROOT="$SOURCE_ROOT/$OUTPUT_DIR/$BUNDLE_NAME"
 ARTIFACT_PATH=${ARTIFACT_PATH:-$SOURCE_ROOT/$OUTPUT_DIR/$ARTIFACT_FILE}
 TMP_ARTIFACT="${ARTIFACT_PATH}.tmp"
+STAGE_DIR=$(mktemp -d)
+
+cleanup() {
+  rm -rf "$STAGE_DIR"
+}
+
+trap cleanup EXIT
 
 if [[ ! -x "$BUNDLE_ROOT/run.sh" ]]; then
   printf 'bundle not found at %s\n' "$BUNDLE_ROOT" >&2
@@ -31,8 +38,10 @@ fi
 
 mkdir -p "$(dirname "$ARTIFACT_PATH")"
 rm -f "$TMP_ARTIFACT"
+# Archive from a staged snapshot so tar does not race against mutations in the live bundle tree.
+tar -C "$SOURCE_ROOT/$OUTPUT_DIR" -cf - "$BUNDLE_NAME" | tar -C "$STAGE_DIR" -xf -
 # COPYFILE_DISABLE keeps macOS metadata out of Linux bundle archives when callers package locally.
-COPYFILE_DISABLE=1 tar -C "$SOURCE_ROOT/$OUTPUT_DIR" -czf "$TMP_ARTIFACT" "$BUNDLE_NAME"
+COPYFILE_DISABLE=1 tar -C "$STAGE_DIR" -czf "$TMP_ARTIFACT" "$BUNDLE_NAME"
 mv "$TMP_ARTIFACT" "$ARTIFACT_PATH"
 
 printf 'Artifact: %s\n' "$ARTIFACT_PATH"

@@ -43,10 +43,17 @@ cleanup() {
 
 trap cleanup EXIT
 
-# The verify container runs without network so the packaged bundle must prove it can start without reaching back to GitHub.
-docker create --name "$CONTAINER_NAME" --network none "$TEST_CONTAINER_IMAGE" sleep infinity >/dev/null
+# The container needs network briefly for apt-get, then we detach it before launching the bundle.
+docker create --name "$CONTAINER_NAME" "$TEST_CONTAINER_IMAGE" sleep infinity >/dev/null
 docker start "$CONTAINER_NAME" >/dev/null
 docker exec "$CONTAINER_NAME" bash -lc "export DEBIAN_FRONTEND=noninteractive; apt-get update >/dev/null; apt-get install -y --no-install-recommends $TEST_APT_PACKAGES >/dev/null"
+
+while IFS= read -r network_name; do
+  if [[ -n "$network_name" ]]; then
+    docker network disconnect "$network_name" "$CONTAINER_NAME" >/dev/null
+  fi
+done < <(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$CONTAINER_NAME")
+
 docker cp "$ARTIFACT_PATH" "$CONTAINER_NAME:/tmp/${BUNDLE_NAME}.tar.gz"
 # TEST_INSTALL_ROOT stays configurable, but the archive still expands from the bundle's fixed top-level directory.
 docker exec -e TEST_INSTALL_ROOT="$TEST_INSTALL_ROOT" -e BUNDLE_NAME="$BUNDLE_NAME" "$CONTAINER_NAME" bash -lc 'mkdir -p "$(dirname "$TEST_INSTALL_ROOT")" && tar -xzf "/tmp/${BUNDLE_NAME}.tar.gz" -C "$(dirname "$TEST_INSTALL_ROOT")" && if [[ "$TEST_INSTALL_ROOT" != "$(dirname "$TEST_INSTALL_ROOT")/$BUNDLE_NAME" ]]; then rm -rf "$TEST_INSTALL_ROOT" && mv "$(dirname "$TEST_INSTALL_ROOT")/$BUNDLE_NAME" "$TEST_INSTALL_ROOT"; fi'

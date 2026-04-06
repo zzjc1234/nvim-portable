@@ -20,13 +20,13 @@ HOST_GID=${HOST_GID:-$(id -g)}
 REQUIRED_BUNDLE_PATHS_INPUT=${REQUIRED_BUNDLE_PATHS:-}
 REQUIRED_TREESITTER_PARSERS_INPUT=${REQUIRED_TREESITTER_PARSERS:-}
 
-if [[ -z "$SOURCE_ROOT" || -z "$CONFIG_PATH" ]]; then
-  printf 'SOURCE_ROOT and CONFIG_PATH are required\n' >&2
-  exit 1
-fi
-
 # Re-entering inside a container keeps host setup minimal while making the actual bundle build reproducible.
 if [[ "${1:-}" != "--inside" ]]; then
+  if [[ -z "$SOURCE_ROOT" || -z "$CONFIG_PATH" ]]; then
+    printf 'SOURCE_ROOT and CONFIG_PATH are required\n' >&2
+    exit 1
+  fi
+
   docker run --rm -t \
     -e TARGET_ARCH="$TARGET_ARCH" \
     -e CONFIG_PATH="$CONFIG_PATH" \
@@ -45,6 +45,11 @@ if [[ "${1:-}" != "--inside" ]]; then
     "$BUILD_CONTAINER_IMAGE" \
     bash -lc "export DEBIAN_FRONTEND=noninteractive; apt-get update >/dev/null; apt-get install -y --no-install-recommends $BUILD_APT_PACKAGES >/dev/null; bash /infra/docker/scripts/build-bundle.sh --inside"
   exit 0
+fi
+
+if [[ -z "$CONFIG_PATH" ]]; then
+  printf 'CONFIG_PATH is required\n' >&2
+  exit 1
 fi
 
 # Neovim release assets and artifact suffixes do not use the same architecture strings as GitHub runners.
